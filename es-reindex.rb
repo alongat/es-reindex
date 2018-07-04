@@ -1,5 +1,10 @@
 #!/usr/bin/env ruby
 #encoding:utf-8
+
+#
+# Original script at https://github.com/geronime/es-reindex
+#
+
 require 'rubygems'
 require 'bundler/setup'
 require 'rest-client'
@@ -112,43 +117,43 @@ def scroll_request(url, scroll_id, es_version='1.5')
 end
 
 # remove old index in case of remove=true
-retried_request(:delete, "#{durl}/#{didx}") \
-  if remove && retried_request(:get, "#{durl}/#{didx}/_recovery")
+# retried_request(:delete, "#{durl}/#{didx}") \
+#   if remove && retried_request(:get, "#{durl}/#{didx}/_recovery")
 
 # (re)create destination index
-unless retried_request(:get, "#{durl}/#{didx}/_recovery")
-  # obtain the original index settings first
-  unless settings = retried_request(:get, "#{surl}/#{sidx}/_settings")
-    warn "Failed to obtain original index '#{surl}/#{sidx}' settings!"
-    exit 1
-  end
-  settings = Oj.load settings
-  sidx = settings.keys[0]
-  settings[sidx].delete 'index.version.created'
-  printf 'Creating \'%s/%s\' index with settings from \'%s/%s\'... ',
-      durl, didx, surl, sidx
-  unless retried_request(:post, "#{durl}/#{didx}", Oj.dump(settings[sidx]))
-    puts 'FAILED!'
-    exit 1
-  else
-    puts 'OK.'
-  end
-  unless mappings = retried_request(:get, "#{surl}/#{sidx}/_mapping")
-    warn "Failed to obtain original index '#{surl}/#{sidx}' mappings!"
-    exit 1
-  end
-  mappings = Oj.load mappings
-  mappings[sidx]['mappings'].each_pair{|type, mapping|
-    printf 'Copying mapping \'%s/%s/%s\'... ', durl, didx, type
-    unless retried_request(:put, "#{durl}/#{didx}/#{type}/_mapping",
-        Oj.dump({type => mapping}))
-      puts 'FAILED!'
-      exit 1
-    else
-      puts 'OK.'
-    end
-  }
-end
+# unless retried_request(:get, "#{durl}/#{didx}/_recovery")
+#   # obtain the original index settings first
+#   unless settings = retried_request(:get, "#{surl}/#{sidx}/_settings")
+#     warn "Failed to obtain original index '#{surl}/#{sidx}' settings!"
+#     exit 1
+#   end
+#   settings = Oj.load settings
+#   sidx = settings.keys[0]
+#   settings[sidx].delete 'index.version.created'
+#   printf 'Creating \'%s/%s\' index with settings from \'%s/%s\'... ',
+#       durl, didx, surl, sidx
+#   unless retried_request(:post, "#{durl}/#{didx}", Oj.dump(settings[sidx]))
+#     puts 'FAILED!'
+#     exit 1
+#   else
+#     puts 'OK.'
+#   end
+#   unless mappings = retried_request(:get, "#{surl}/#{sidx}/_mapping")
+#     warn "Failed to obtain original index '#{surl}/#{sidx}' mappings!"
+#     exit 1
+#   end
+#   mappings = Oj.load mappings
+#   mappings[sidx]['mappings'].each_pair{|type, mapping|
+#     printf 'Copying mapping \'%s/%s/%s\'... ', durl, didx, type
+#     unless retried_request(:put, "#{durl}/#{didx}/#{type}/_mapping",
+#         Oj.dump({type => mapping}))
+#       puts 'FAILED!'
+#       exit 1
+#     else
+#       puts 'OK.'
+#     end
+#   }
+# end
 
 printf "Copying '%s/%s' to '%s/%s'... \n", surl, sidx, durl, didx
 t, done = Time.now, 0
@@ -167,10 +172,10 @@ if ( es_version.split('.') <=> ['5'] ) >= 0
   scan = retried_request(:get, "#{surl}/#{sidx}/_search" +
     "?sort=_doc&scroll=10m&size=#{frame / shards}")
 else
-  printf "Source ElasticSearch has version %s. Using search_type=scan\n", es_version
-  scan = retried_request(:get, "#{surl}/#{sidx}/_search" +
-    "?search_type=scan&scroll=10m&size=#{frame / shards}")
+  printf "Source ElasticSearch has version %s. Unsupported!\n", es_version
+  exit 1
 end
+
 scan = Oj.load scan
 scroll_id = scan['_scroll_id']
 total = scan['hits']['total']
@@ -218,8 +223,8 @@ begin
   Timeout::timeout(60) do
     while true
       scount = retried_request :get, "#{surl}/#{sidx}/_count?q=*"
-      dcount = retried_request :get, "#{durl}/#{didx}/_count?q=*"
       scount = Oj.load(scount)['count'].to_i
+      dcount = retried_request :get, "#{durl}/#{didx}/_count?q=*"
       dcount = Oj.load(dcount)['count'].to_i
       break if scount == dcount
       sleep 1
